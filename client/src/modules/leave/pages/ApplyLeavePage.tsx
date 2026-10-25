@@ -1,4 +1,5 @@
 import { useState } from "react";
+import dayjs from "dayjs";
 import {
   Alert,
   Badge,
@@ -46,6 +47,29 @@ export default function ApplyLeavePage() {
   const isBalanceInsufficient =
     activeBalance !== undefined && activeBalance.available_balance < durationDays;
 
+  const handleStartDateChange = (val: string) => {
+    setStartDate(val);
+    if (val && endDate) {
+      const diff = dayjs(endDate).diff(dayjs(val), "day") + 1;
+      if (diff > 0) {
+        setDurationDays(diff);
+      }
+    } else if (val && !endDate) {
+      setEndDate(val);
+      setDurationDays(1);
+    }
+  };
+
+  const handleEndDateChange = (val: string) => {
+    setEndDate(val);
+    if (startDate && val) {
+      const diff = dayjs(val).diff(dayjs(startDate), "day") + 1;
+      if (diff > 0) {
+        setDurationDays(diff);
+      }
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!startDate || !endDate) {
@@ -53,6 +77,34 @@ export default function ApplyLeavePage() {
         color: "red",
         title: "Validation Error",
         message: "Start date and end date are mandatory.",
+      });
+      return;
+    }
+
+    if (dayjs(endDate).isBefore(dayjs(startDate))) {
+      notifications.show({
+        color: "red",
+        title: "Validation Error",
+        message: "End date cannot be prior to start date.",
+      });
+      return;
+    }
+
+    const maxDays = dayjs(endDate).diff(dayjs(startDate), "day") + 1;
+    if (durationDays > maxDays) {
+      notifications.show({
+        color: "red",
+        title: "Validation Error",
+        message: `Duration (${durationDays} days) cannot exceed date range (${maxDays} days).`,
+      });
+      return;
+    }
+
+    if (durationDays === 0.5 && startDate !== endDate) {
+      notifications.show({
+        color: "red",
+        title: "Validation Error",
+        message: "Half-day leave must have identical start and end dates.",
       });
       return;
     }
@@ -146,14 +198,14 @@ export default function ApplyLeavePage() {
                 label="Start Date"
                 type="date"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={(e) => handleStartDateChange(e.target.value)}
                 required
               />
               <TextInput
                 label="End Date"
                 type="date"
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                onChange={(e) => handleEndDateChange(e.target.value)}
                 required
               />
             </Group>

@@ -31,6 +31,7 @@ class ApprovalDecisionSerializer(serializers.ModelSerializer):
             "id",
             "request_id",
             "authority_id",
+            "next_authority_id",
             "outcome",
             "remarks",
             "decided_at",
@@ -54,6 +55,8 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
             "status",
             "current_authority_id",
             "current_authority_role",
+            "forward_count",
+            "cancellation_reason",
             "submission_date",
             "decisions",
             "created_at",
@@ -75,6 +78,12 @@ class DecideLeaveRequestInputSerializer(serializers.Serializer):
         choices=[
             (ApprovalOutcome.APPROVED.value, "Approved"),
             (ApprovalOutcome.REJECTED.value, "Rejected"),
+            (ApprovalOutcome.FORWARDED.value, "Forwarded"),
         ]
     )
     remarks = serializers.CharField(max_length=1000, required=False, allow_blank=True)
+    next_authority_id = serializers.IntegerField(required=False, allow_null=True)
+
+
+class CancelLeaveRequestInputSerializer(serializers.Serializer):
+    reason = serializers.CharField(max_length=500, required=False, allow_blank=True)

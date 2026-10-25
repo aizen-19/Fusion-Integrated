@@ -26,11 +26,12 @@ class LeaveType(str, Enum):
 
 
 class LeaveStatus(str, Enum):
-    """Lifecycle states for LeaveRequest governed by BW-HR-01 STT."""
+    """Lifecycle states for LeaveRequest governed by BW-HR-01, BW-HR-02, BW-HR-03 STT."""
     DRAFT = "draft"
     PENDING_CURRENT_AUTHORITY = "pending_current_authority"
     APPROVED = "approved"
     REJECTED = "rejected"
+    CANCELLED = "cancelled"
 
 
 class ApprovalOutcome(str, Enum):
@@ -93,4 +94,6 @@ class LeaveRequestEntity:
     status: LeaveStatus = LeaveStatus.DRAFT
     current_authority_id: int | None = None
     current_authority_role: str = ""
+    forward_count: int = 0
+    cancellation_reason: str = ""
     created_at: datetime | None = None

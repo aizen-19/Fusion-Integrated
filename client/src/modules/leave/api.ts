@@ -61,6 +61,22 @@ export function useDecideLeave() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["leave", "pending"] });
       qc.invalidateQueries({ queryKey: ["leave", "mine"] });
+      qc.invalidateQueries({ queryKey: ["leave", "balances"] });
+    },
+  });
+}
+
+export function useCancelLeave() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: number; reason?: string }) => {
+      const { data } = await http.post(`/leave/requests/${id}/cancel/`, { reason });
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["leave", "mine"] });
+      qc.invalidateQueries({ queryKey: ["leave", "pending"] });
+      qc.invalidateQueries({ queryKey: ["leave", "balances"] });
     },
   });
 }

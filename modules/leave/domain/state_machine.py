@@ -15,8 +15,9 @@ DRAFT = "draft"
 PENDING_CURRENT_AUTHORITY = "pending_current_authority"
 APPROVED = "approved"
 REJECTED = "rejected"
+CANCELLED = "cancelled"
 
-TERMINAL = frozenset({APPROVED, REJECTED})
+TERMINAL = frozenset({APPROVED, REJECTED, CANCELLED})
 IN_FLIGHT = frozenset({DRAFT, PENDING_CURRENT_AUTHORITY})
 
 # Actors
@@ -80,6 +81,24 @@ TRANSITIONS: tuple[Transition, ...] = (
         permission="leave.request.approve",
         actors=frozenset({AUTHORITY}),
         guards=("is_assigned_authority",),
+    ),
+    # Forwarding traversal (BW-HR-03 / CW-HR-01):
+    # Pending Current Authority -> Pending Current Authority (next authority assigned)
+    Transition(
+        frm=PENDING_CURRENT_AUTHORITY,
+        to=PENDING_CURRENT_AUTHORITY,
+        permission="leave.request.approve",
+        actors=frozenset({AUTHORITY}),
+        guards=("is_assigned_authority", "has_next_authority"),
+    ),
+    # Cancellation / Withdrawal by applicant (HR-UC-003 / Phase 6):
+    # Pending Current Authority -> Cancelled
+    Transition(
+        frm=PENDING_CURRENT_AUTHORITY,
+        to=CANCELLED,
+        permission="leave.request.delete",
+        actors=frozenset({APPLICANT}),
+        guards=("is_applicant",),
     ),
 )
 

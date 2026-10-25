@@ -1,11 +1,24 @@
-import { Badge, Button, Card, Container, Group, Stack, Text } from "@mantine/core";
+import { useState } from "react";
+import {
+  Badge,
+  Button,
+  Card,
+  Container,
+  Group,
+  Modal,
+  Stack,
+  Text,
+  Textarea,
+} from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { Link } from "react-router-dom";
-import { FaCalendarPlus } from "react-icons/fa";
+import { FaBan, FaCalendarPlus } from "react-icons/fa";
 
+import { errorMessage } from "../../../lib/http";
 import { DataTable } from "../../../ui/components/DataTable";
 import { ErrorState } from "../../../ui/components/ErrorState";
 import { PageHeader } from "../../../ui/components/PageHeader";
-import { useMyLeaves } from "../api";
+import { useCancelLeave, useMyLeaves } from "../api";
 import type { LeaveRequest } from "../types";
 
 function statusBadge(status: string) {
@@ -14,6 +27,8 @@ function statusBadge(status: string) {
       return <Badge color="teal" variant="filled">Approved</Badge>;
     case "rejected":
       return <Badge color="red" variant="filled">Rejected</Badge>;
+    case "cancelled":
+      return <Badge color="gray" variant="filled">Cancelled</Badge>;
     case "pending_current_authority":
       return <Badge color="yellow" variant="filled">Pending Authority</Badge>;
     default:
@@ -23,6 +38,10 @@ function statusBadge(status: string) {
 
 export default function MyLeavesPage() {
   const { data, isPending, error } = useMyLeaves();
+  const cancelMutation = useCancelLeave();
+
+  const [activeRequest, setActiveRequest] = useState<LeaveRequest | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
 
   if (error) {
     return (
@@ -31,6 +50,39 @@ export default function MyLeavesPage() {
       </Container>
     );
   }
+
+  const handleOpenCancel = (req: LeaveRequest) => {
+    setActiveRequest(req);
+    setCancelReason("");
+  };
+
+  const handleConfirmCancel = () => {
+    if (!activeRequest) return;
+
+    cancelMutation.mutate(
+      {
+        id: activeRequest.id,
+        reason: cancelReason.trim(),
+      },
+      {
+        onSuccess: () => {
+          notifications.show({
+            color: "teal",
+            title: "Leave Request Cancelled",
+            message: `Leave request #${activeRequest.id} has been withdrawn successfully.`,
+          });
+          setActiveRequest(null);
+        },
+        onError: (err) => {
+          notifications.show({
+            color: "red",
+            title: "Cancellation Failed",
+            message: errorMessage(err),
+          });
+        },
+      },
+    );
+  };
 
   const rows = data || [];
 
@@ -56,8 +108,11 @@ export default function MyLeavesPage() {
           rows={rows}
           loading={isPending}
           rowKey={(r) => r.id}
-          minWidth={850}
-          emptyText="No leave requests submitted yet."
+          minWidth={900}
+          empty={{
+            title: "No leave requests submitted yet",
+            description: "Use the button above to submit a new leave application.",
+          }}
           columns={[
             {
               key: "leave_type",
@@ -95,9 +150,16 @@ export default function MyLeavesPage() {
               key: "authority",
               header: "Routing Tier",
               render: (r) => (
-                <Badge variant="outline" color="indigo">
-                  {r.current_authority_role || "Designated Authority"}
-                </Badge>
+                <Group gap="xs">
+                  <Badge variant="outline" color="indigo">
+                    {r.current_authority_role || "Designated Authority"}
+                  </Badge>
+                  {r.forward_count > 0 && (
+                    <Badge variant="light" color="violet" size="xs">
+                      Forwarded ({r.forward_count}x)
+                    </Badge>
+                  )}
+                </Group>
               ),
             },
             {
@@ -107,8 +169,23 @@ export default function MyLeavesPage() {
             },
             {
               key: "decision",
-              header: "Remarks / Decision",
+              header: "Remarks / Status Info",
               render: (r) => {
+                if (r.status === "cancelled") {
+                  return (
+                    <Stack gap={2}>
+                      <Text size="xs" fw={500} c="dimmed">
+                        WITHDRAWN BY APPLICANT
+                      </Text>
+                      {r.cancellation_reason && (
+                        <Text size="xs" c="dimmed" fs="italic">
+                          "{r.cancellation_reason}"
+                        </Text>
+                      )}
+                    </Stack>
+                  );
+                }
+
                 const latestDecision = r.decisions?.[r.decisions.length - 1];
                 if (!latestDecision) {
                   return <Text size="xs" c="dimmed">Awaiting evaluation</Text>;
@@ -127,9 +204,68 @@ export default function MyLeavesPage() {
                 );
               },
             },
+            {
+              key: "actions",
+              header: "Action",
+              render: (r) => {
+                if (r.status !== "pending_current_authority") {
+                  return null;
+                }
+                return (
+                  <Button
+                    size="xs"
+                    color="red"
+                    variant="subtle"
+                    leftSection={<FaBan />}
+                    onClick={() => handleOpenCancel(r)}
+                  >
+                    Withdraw
+                  </Button>
+                );
+              },
+            },
           ]}
         />
       </Card>
+
+      <Modal
+        opened={Boolean(activeRequest)}
+        onClose={() => setActiveRequest(null)}
+        title={
+          <Text fw={600}>
+            Withdraw Leave Request #{activeRequest?.id}
+          </Text>
+        }
+      >
+        <Stack gap="md">
+          <Text size="sm">
+            Are you sure you want to withdraw this application for{" "}
+            <b>{activeRequest?.duration_days} day(s)</b> of{" "}
+            <b>{activeRequest?.leave_type} leave</b>?
+          </Text>
+
+          <Textarea
+            label="Reason for withdrawal (optional)"
+            placeholder="e.g., travel plans cancelled, personal conflict resolved..."
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+            minRows={3}
+          />
+
+          <Group justify="flex-end" mt="md">
+            <Button variant="default" onClick={() => setActiveRequest(null)}>
+              Keep Application
+            </Button>
+            <Button
+              color="red"
+              loading={cancelMutation.isPending}
+              onClick={handleConfirmCancel}
+            >
+              Confirm Withdrawal
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Container>
   );
 }

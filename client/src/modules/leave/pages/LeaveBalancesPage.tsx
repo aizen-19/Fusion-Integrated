@@ -1,15 +1,15 @@
 import {
   Badge,
   Card,
+  Center,
   Container,
-  Grid,
   Group,
+  Loader,
   Progress,
   SimpleGrid,
   Stack,
   Text,
 } from "@mantine/core";
-import { FaChartPie } from "react-icons/fa";
 
 import { ErrorState } from "../../../ui/components/ErrorState";
 import { PageHeader } from "../../../ui/components/PageHeader";
@@ -27,6 +27,16 @@ const TYPE_NAMES: Record<string, string> = {
 
 export default function LeaveBalancesPage() {
   const { data: balances, isPending, error } = useMyBalances();
+
+  if (isPending) {
+    return (
+      <Container size="xl">
+        <Center py="xl">
+          <Loader size="md" />
+        </Center>
+      </Container>
+    );
+  }
 
   if (error) {
     return (

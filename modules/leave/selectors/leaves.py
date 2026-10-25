@@ -35,10 +35,31 @@ def get_user_balance_for_type(
 
 def get_pending_requests_for_authority(authority_user_id: int) -> QuerySet[LeaveRequest]:
     """Return all leave requests waiting for this authority's decision."""
-    return LeaveRequest.objects.filter(
-        current_authority_id=authority_user_id,
-        status=LeaveRequest.Status.PENDING_CURRENT_AUTHORITY,
-    ).prefetch_related("decisions")
+    from django.db.models import Q
+
+    auth = get_authority_record(authority_user_id)
+    if auth:
+        return (
+            LeaveRequest.objects.filter(
+                status=LeaveRequest.Status.PENDING_CURRENT_AUTHORITY,
+            )
+            .filter(
+                Q(current_authority_id=authority_user_id)
+                | Q(current_authority_role=auth.role)
+                | Q(current_authority_id__isnull=True)
+            )
+            .prefetch_related("decisions")
+            .order_by("-created_at")
+        )
+
+    return (
+        LeaveRequest.objects.filter(
+            current_authority_id=authority_user_id,
+            status=LeaveRequest.Status.PENDING_CURRENT_AUTHORITY,
+        )
+        .prefetch_related("decisions")
+        .order_by("-created_at")
+    )
 
 
 def get_request_by_id(request_id: int) -> LeaveRequest | None:

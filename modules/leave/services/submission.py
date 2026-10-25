@@ -45,7 +45,23 @@ def submit_leave_request(
     if not val.is_valid:
         raise BadRequestError("; ".join(val.errors))
 
-    # 2. Check balance & eligibility (BR-HR-008)
+    # 2. Check for overlapping active or approved leave requests
+    overlap = LeaveRequest.objects.filter(
+        user_id=user_id,
+        status__in=[
+            LeaveRequest.Status.PENDING_CURRENT_AUTHORITY,
+            LeaveRequest.Status.APPROVED,
+        ],
+        start_date__lte=end_date,
+        end_date__gte=start_date,
+    ).exists()
+    if overlap:
+        raise ConflictError(
+            f"You already have an active or approved leave request overlapping the range "
+            f"{start_date} to {end_date}."
+        )
+
+    # 3. Check balance & eligibility (BR-HR-008)
     year = start_date.year
     ensure_balances_for_user(user_id, year)
     bal = LeaveBalance.objects.filter(
@@ -59,10 +75,10 @@ def submit_leave_request(
     if not bal_val.is_valid:
         raise ConflictError("; ".join(bal_val.errors))
 
-    # 3. State transition check (Draft -> Pending)
+    # 4. State transition check (Draft -> Pending)
     sm.resolve(sm.DRAFT, sm.PENDING_CURRENT_AUTHORITY, sm.APPLICANT)
 
-    # 4. Resolve approval authority per BR-HR-009
+    # 5. Resolve approval authority per BR-HR-009
     # Lookup directory info for user category and department
     users_info = directory_contracts.get_users([user_id])
     user_info = users_info.get(user_id, {})
@@ -83,7 +99,13 @@ def submit_leave_request(
         authority_directory=auth_dir,
     )
 
-    # 5. Create LeaveRequest in atomic block
+    # If specific HOD/Registrar was not found in directory, fallback to first active authority
+    if auth_id is None and active_authorities.exists():
+        fallback = active_authorities.first()
+        auth_id = fallback.user_id
+        auth_role = auth_role or fallback.role
+
+    # 6. Create LeaveRequest in atomic block
     with transaction.atomic():
         request = LeaveRequest.objects.create(
             user_id=user_id,
@@ -94,7 +116,8 @@ def submit_leave_request(
             justification=justification.strip(),
             status=LeaveRequest.Status.PENDING_CURRENT_AUTHORITY,
             current_authority_id=auth_id,
-            current_authority_role=auth_role.value if auth_role else "",
+            current_authority_role=auth_role.value if hasattr(auth_role, "value") else str(auth_role or ""),
+            forward_count=0,
         )
 
     return request

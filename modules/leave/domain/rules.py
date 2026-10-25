@@ -52,6 +52,15 @@ def validate_required_fields(
     if duration_days is None or duration_days <= Decimal("0"):
         errors.append("Duration in days must be greater than zero.")
 
+    if start_date and end_date and duration_days:
+        calendar_days = Decimal(str((end_date - start_date).days + 1))
+        if duration_days > calendar_days:
+            errors.append(
+                f"Duration ({duration_days} days) cannot exceed calendar range ({calendar_days} days)."
+            )
+        if duration_days < Decimal("1.0") and start_date != end_date:
+            errors.append("Half-day leave must have identical start and end dates.")
+
     if not justification or not justification.strip():
         errors.append("Justification is mandatory before submission can be accepted.")
 
@@ -114,3 +123,43 @@ def calculate_balance_deduction(
     new_consumed = current_consumed + days
     new_available = current_available - days
     return new_consumed, new_available
+
+
+def determine_next_authority(
+    current_role: str,
+    employee_category: str = "staff",
+    authority_directory: dict[str, int] | None = None,
+) -> tuple[int | None, AuthorityRole | None]:
+    """Determine next escalation authority for forwarding traversal (BW-HR-03).
+
+    Routing hierarchy (BR-HR-009):
+    HOD -> Director (for faculty) or Registrar (for staff)
+    Registrar -> Director
+    Director -> Terminal (no higher authority)
+    """
+    directory = authority_directory or {}
+    cur = current_role.strip()
+
+    if cur == AuthorityRole.HOD.value:
+        if employee_category.lower() == EmployeeCategory.FACULTY.value:
+            next_role = AuthorityRole.DIRECTOR
+        else:
+            next_role = AuthorityRole.REGISTRAR
+    elif cur == AuthorityRole.REGISTRAR.value:
+        next_role = AuthorityRole.DIRECTOR
+    else:
+        # Director is terminal
+        return None, None
+
+    next_id = directory.get(next_role.value)
+    return next_id, next_role
+
+
+def check_date_overlap(
+    start1: date,
+    end1: date,
+    start2: date,
+    end2: date,
+) -> bool:
+    """Return True if two date ranges overlap (inclusive)."""
+    return not (end1 < start2 or end2 < start1)

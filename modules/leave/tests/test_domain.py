@@ -23,7 +23,9 @@ from modules.leave.domain.entities import (
 from modules.leave.domain.rules import (
     SUPPORTED_LEAVE_TYPES,
     calculate_balance_deduction,
+    check_date_overlap,
     determine_approval_authority,
+    determine_next_authority,
     validate_balance_and_eligibility,
     validate_required_fields,
 )
@@ -165,6 +167,97 @@ class TestLeaveBusinessRules(unittest.TestCase):
         self.assertEqual(consumed, Decimal("5.5"))
         self.assertEqual(available, Decimal("6.5"))
 
+    def test_forwarding_and_escalation_rules(self):
+        """BW-HR-03: Multi-tier authority forwarding and escalation."""
+        # Forwarding state transition
+        self.assertTrue(sm.is_legal(sm.PENDING_CURRENT_AUTHORITY, sm.PENDING_CURRENT_AUTHORITY))
+        t = sm.resolve(sm.PENDING_CURRENT_AUTHORITY, sm.PENDING_CURRENT_AUTHORITY, sm.AUTHORITY)
+        self.assertEqual(t.permission, "leave.request.approve")
+
+        dir_map = {"HOD": 101, "Registrar": 201, "Director": 301}
+
+        # HOD forwards faculty -> Director
+        next_id, next_role = determine_next_authority("HOD", "faculty", dir_map)
+        self.assertEqual(next_role, AuthorityRole.DIRECTOR)
+        self.assertEqual(next_id, 301)
+
+        # HOD forwards staff -> Registrar
+        next_id2, next_role2 = determine_next_authority("HOD", "staff", dir_map)
+        self.assertEqual(next_role2, AuthorityRole.REGISTRAR)
+        self.assertEqual(next_id2, 201)
+
+        # Registrar forwards -> Director
+        next_id3, next_role3 = determine_next_authority("Registrar", "staff", dir_map)
+        self.assertEqual(next_role3, AuthorityRole.DIRECTOR)
+        self.assertEqual(next_id3, 301)
+
+        # Director is terminal authority
+        next_id4, next_role4 = determine_next_authority("Director", "faculty", dir_map)
+        self.assertIsNone(next_id4)
+        self.assertIsNone(next_role4)
+
+    def test_cancellation_transition_rules(self):
+        """Applicant can cancel pending request (HR-UC-003 / Phase 6)."""
+        self.assertTrue(sm.is_legal(sm.PENDING_CURRENT_AUTHORITY, sm.CANCELLED))
+        t = sm.resolve(sm.PENDING_CURRENT_AUTHORITY, sm.CANCELLED, sm.APPLICANT)
+        self.assertEqual(t.permission, "leave.request.delete")
+
+        # Authority cannot cancel on behalf of applicant
+        with self.assertRaises(sm.ActorNotAllowed):
+            sm.resolve(sm.PENDING_CURRENT_AUTHORITY, sm.CANCELLED, sm.AUTHORITY)
+
+        # Cancelled is terminal
+        self.assertEqual(sm.allowed_targets(sm.CANCELLED), [])
+
+    def test_duration_exceeding_calendar_range_validation(self):
+        """Requested duration cannot exceed calendar day span."""
+        res = validate_required_fields(
+            leave_type=LeaveType.CASUAL.value,
+            start_date=date(2026, 10, 15),
+            end_date=date(2026, 10, 16),
+            duration_days=Decimal("5.0"),
+            justification="Trip",
+        )
+        self.assertFalse(res.is_valid)
+        self.assertTrue(any("cannot exceed calendar range" in e for e in res.errors))
+
+    def test_half_day_leave_validation(self):
+        """Half-day leave (0.5 days) must have matching start and end dates."""
+        res = validate_required_fields(
+            leave_type=LeaveType.CASUAL.value,
+            start_date=date(2026, 10, 15),
+            end_date=date(2026, 10, 16),
+            duration_days=Decimal("0.5"),
+            justification="Doctor visit",
+        )
+        self.assertFalse(res.is_valid)
+        self.assertTrue(any("Half-day leave must have identical" in e for e in res.errors))
+
+        # Valid half day
+        res_ok = validate_required_fields(
+            leave_type=LeaveType.CASUAL.value,
+            start_date=date(2026, 10, 15),
+            end_date=date(2026, 10, 15),
+            duration_days=Decimal("0.5"),
+            justification="Doctor visit",
+        )
+        self.assertTrue(res_ok.is_valid)
+
+    def test_check_date_overlap(self):
+        """Active leave requests cannot overlap with requested dates."""
+        range1 = (date(2026, 11, 10), date(2026, 11, 15))
+        # Overlapping start
+        self.assertTrue(check_date_overlap(date(2026, 11, 8), date(2026, 11, 10), range1[0], range1[1]))
+        # Overlapping end
+        self.assertTrue(check_date_overlap(date(2026, 11, 15), date(2026, 11, 20), range1[0], range1[1]))
+        # Fully enclosing
+        self.assertTrue(check_date_overlap(date(2026, 11, 11), date(2026, 11, 13), range1[0], range1[1]))
+        # Non-overlapping before
+        self.assertFalse(check_date_overlap(date(2026, 11, 1), date(2026, 11, 9), range1[0], range1[1]))
+        # Non-overlapping after
+        self.assertFalse(check_date_overlap(date(2026, 11, 16), date(2026, 11, 20), range1[0], range1[1]))
+
 
 if __name__ == "__main__":
     unittest.main()
+

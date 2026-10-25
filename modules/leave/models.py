@@ -23,6 +23,7 @@ class LeaveRequest(TimeStampedModel, UserScopedModel):
         )
         APPROVED = LeaveStatus.APPROVED.value, "Approved"
         REJECTED = LeaveStatus.REJECTED.value, "Rejected"
+        CANCELLED = LeaveStatus.CANCELLED.value, "Cancelled"
 
     class LeaveTypes(models.TextChoices):
         CASUAL = LeaveType.CASUAL.value, "Casual Leave"
@@ -49,6 +50,8 @@ class LeaveRequest(TimeStampedModel, UserScopedModel):
     )
     current_authority_id = models.IntegerField(null=True, blank=True, db_index=True)
     current_authority_role = models.CharField(max_length=40, blank=True)
+    forward_count = models.PositiveSmallIntegerField(default=0)
+    cancellation_reason = models.TextField(blank=True)
     submission_date = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -121,6 +124,7 @@ class ApprovalDecision(TimeStampedModel):
         related_name="decisions",
     )
     authority_id = models.IntegerField(db_index=True)
+    next_authority_id = models.IntegerField(null=True, blank=True)
     outcome = models.CharField(max_length=32, choices=Outcome.choices)
     remarks = models.TextField(blank=True)
     decided_at = models.DateTimeField(auto_now_add=True)

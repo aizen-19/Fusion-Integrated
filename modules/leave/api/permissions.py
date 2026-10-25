@@ -15,5 +15,8 @@ P_TYPE_MANAGE = "leave.type.manage"
 
 MayViewSelf = HasPermission(P_VIEW_SELF)
 MayCreateRequest = HasPermission(P_CREATE)
+MayCancelRequest = HasPermission(P_DELETE)
 MayApproveRequest = HasPermission(P_APPROVE)
 MayViewRequests = HasPermission(P_VIEW)
+MayUpdateBalance = HasPermission(P_BALANCE_UPDATE)
+

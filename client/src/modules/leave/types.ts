@@ -10,7 +10,8 @@ export type LeaveStatus =
   | "draft"
   | "pending_current_authority"
   | "approved"
-  | "rejected";
+  | "rejected"
+  | "cancelled";
 
 export type ApprovalOutcome = "approved" | "rejected" | "forwarded";
 
@@ -20,6 +21,7 @@ export interface ApprovalDecision {
   authority_id: number;
   outcome: ApprovalOutcome;
   remarks: string;
+  next_authority_id?: number | null;
   decided_at: string;
 }
 
@@ -34,6 +36,8 @@ export interface LeaveRequest {
   status: LeaveStatus;
   current_authority_id: number | null;
   current_authority_role: string;
+  forward_count: number;
+  cancellation_reason?: string;
   submission_date: string;
   decisions: ApprovalDecision[];
   created_at: string;
@@ -61,6 +65,11 @@ export interface SubmitLeaveInput {
 }
 
 export interface DecideLeaveInput {
-  outcome: "approved" | "rejected";
+  outcome: "approved" | "rejected" | "forwarded";
   remarks?: string;
+  next_authority_id?: number;
+}
+
+export interface CancelLeaveInput {
+  reason?: string;
 }
